@@ -19,3 +19,11 @@
 # Operating system
 .DS_Store
 Thumbs.db
+# ML-Agents training results
+/results/
+
+# ML-Agents generated timer reports
+/Assets/ML-Agents/Timers/
+
+# Accidental terminal file
+/tatus --short
