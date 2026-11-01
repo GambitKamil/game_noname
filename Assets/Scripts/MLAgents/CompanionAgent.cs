@@ -11,6 +11,13 @@ public class CompanionAgent : Agent
     [SerializeField] private float moveSpeed = 4f;
     [SerializeField] private float maxEpisodeTime = 30f;
 
+    [Header("Game Mode")]
+    [SerializeField] private bool trainingMode = true;
+    [SerializeField] private bool startAutomatically = true;
+
+    private bool targetReached = false;
+    private bool navigationActive = false;
+
     [Header("Reward Settings")]
     [SerializeField] private float successReward = 2f;
     [SerializeField] private float stepPenalty = -0.0002f;
@@ -21,19 +28,26 @@ public class CompanionAgent : Agent
     private float episodeTimer;
     private float previousDistance;
 
+    public bool TargetReached => targetReached;
+
     public override void Initialize()
     {
         rb = GetComponent<Rigidbody2D>();
         startPosition = transform.position;
+
+        navigationActive = trainingMode || startAutomatically;
     }
 
     public override void OnEpisodeBegin()
     {
+        targetReached = false;
         rb.linearVelocity = Vector2.zero;
         rb.angularVelocity = 0f;
 
         transform.position = startPosition;
         episodeTimer = 0f;
+
+        navigationActive = trainingMode || startAutomatically;
 
         if (target != null)
         {
@@ -63,6 +77,13 @@ public class CompanionAgent : Agent
 
     public override void OnActionReceived(ActionBuffers actions)
     {
+        if (!trainingMode &&
+            (!navigationActive || targetReached || target == null))
+        {
+            rb.linearVelocity = Vector2.zero;
+            return;
+        }
+
         int horizontal = actions.DiscreteActions[0] - 1;
         int vertical = actions.DiscreteActions[1] - 1;
 
@@ -73,11 +94,12 @@ public class CompanionAgent : Agent
 
         rb.linearVelocity = movement * moveSpeed;
 
-        // Small penalty for spending time
-        AddReward(stepPenalty);
+        if (trainingMode)
+        {
+            AddReward(stepPenalty);
+        }
 
-        // Reward progress toward the target
-        if (target != null)
+        if (trainingMode && target != null)
         {
             float currentDistance = Vector2.Distance(
                 transform.position,
@@ -96,18 +118,60 @@ public class CompanionAgent : Agent
 
         episodeTimer += Time.fixedDeltaTime;
 
-        if (episodeTimer >= maxEpisodeTime)
+        if (trainingMode && episodeTimer >= maxEpisodeTime)
         {
             EndEpisode();
         }
     }
 
+    public void StartNavigation()
+    {
+        if (trainingMode)
+        {
+            Debug.LogWarning(
+                "StartNavigation is only for game mode."
+            );
+            return;
+        }
+
+        if (targetReached || navigationActive)
+            return;
+
+        if (target == null)
+        {
+            Debug.LogWarning(
+                "Companion target is not assigned!"
+            );
+            return;
+        }
+
+        navigationActive = true;
+        Debug.Log("Companion navigation started!");
+    }
+
     private void OnTriggerEnter2D(Collider2D other)
     {
-        if (other.CompareTag("Finish"))
+        if (!other.CompareTag("Finish") || targetReached)
+            return;
+
+        if (!trainingMode && !navigationActive)
+            return;
+
+        targetReached = true;
+
+        if (trainingMode)
         {
             AddReward(successReward);
             EndEpisode();
+        }
+        else
+        {
+            navigationActive = false;
+            rb.linearVelocity = Vector2.zero;
+
+            Debug.Log(
+                "Companion reached switch in game mode!"
+            );
         }
     }
 
